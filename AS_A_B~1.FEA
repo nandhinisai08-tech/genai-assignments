@@ -1,0 +1,102 @@
+Feature: As a billing coordinator, I want the system to automatically verify a patient’s insurance coverage and pre-authorize radiology tests before scheduling, so that delays and manual verification errors can be reduced.
+
+  # Acceptance Criteria:
+  # Given a patient is scheduled for a radiology test,
+  # When the billing coordinator selects “Schedule Test”,
+  # Then the system should verify insurance eligibility via API.
+  # 
+  # Given the test requires pre-authorization,
+  # When the request is sent,
+  # Then the system should store the authorization ID and approval date in the billing record.
+  # 
+  # Given a test is not covered,
+  # When the result is received,
+  # Then the system should notify both the coordinator and patient, and offer alternative payment options.
+  # 
+  # Priority: P1
+  # Risk: Medium
+  # Status: In Progress
+
+  @Positive
+  Scenario: TC-001 - Schedule covered radiology test with successful insurance eligibility verification
+    Given Log in as billing coordinator
+    When Navigate to patient record with valid insurance
+    And Select a CT scan procedure
+    And Click "Schedule Test" button
+    # Test Data: Patient ID: 12345, Insurance: ABC Health, Procedure: CT Head
+    Then System calls insurance eligibility API, receives coverage confirmation, and proceeds to scheduling without errors.
+
+  @Positive
+  Scenario: TC-002 - Schedule radiology test that requires pre‑authorization and store authorization details
+    Given Log in as billing coordinator
+    When Open patient record with insurance that mandates pre‑authorization
+    And Select an MRI procedure
+    And Click "Schedule Test"
+    And Confirm pre‑authorization request when prompted
+    # Test Data: Patient ID: 67890, Insurance: XYZ Care, Procedure: MRI Spine
+    Then System sends pre‑authorization request via API, receives Authorization ID and approval date, and stores them in the billing record.
+
+  @Negative
+  Scenario: TC-003 - Attempt to schedule a test that is not covered by insurance
+    Given Log in as billing coordinator
+    When Open patient record with insurance lacking coverage for ultrasound
+    And Select an Ultrasound procedure
+    And Click "Schedule Test"
+    # Test Data: Patient ID: 11223, Insurance: NoCover Inc., Procedure: Abdominal Ultrasound
+    Then System receives non‑coverage response, displays notification to coordinator, sends email/SMS to patient, and presents alternative payment options.
+
+  @Edge
+  Scenario: TC-004 - Handle insurance API timeout during eligibility check
+    Given Log in as billing coordinator
+    When Open patient record
+    And Select a CT scan
+    And Click "Schedule Test"
+    And Simulate insurance API timeout (no response within 10 seconds)
+    Then System shows a timeout error message, allows coordinator to retry or cancel scheduling, and logs the incident.
+
+  @Negative
+  Scenario: TC-005 - Verify system behavior when insurance API returns malformed response
+    Given Log in as billing coordinator
+    When Open patient record
+    And Select an MRI
+    And Click "Schedule Test"
+    And Mock insurance API to return invalid JSON
+    Then System detects malformed response, logs error, displays user-friendly message, and prevents scheduling until a valid response is received.
+
+  @Authorization
+  Scenario: TC-006 - Schedule test for patient with expired insurance policy
+    Given Log in as billing coordinator
+    When Open patient record where insurance expiration date is past
+    And Select an Ultrasound
+    And Click "Schedule Test"
+    # Test Data: Patient ID: 33445, Insurance: ExpireCo, Expiration: 2023-12-31
+    Then System flags insurance as expired, notifies coordinator, and prevents scheduling until insurance is updated.
+
+  @Edge
+  Scenario: TC-007 - Concurrent scheduling attempts for the same patient and procedure
+    Given Log in as billing coordinator on Workstation A
+    When Open patient record and select MRI
+    And Click "Schedule Test"
+    And Simultaneously, on Workstation B, log in as another coordinator and repeat steps
+    Then System handles concurrency, creates a single scheduling entry, and informs second user of existing pending request.
+
+  @Non-Functional
+  Scenario: TC-008 - Performance: Verify insurance eligibility API response time under load
+    Given Generate 200 simultaneous "Schedule Test" actions for different patients
+    When Measure time from click to receipt of eligibility response
+    Then 95% of API calls return within 3 seconds, meeting performance SLA.
+
+  @Authorization
+  Scenario: TC-009 - Security: Ensure only authorized billing coordinators can trigger insurance verification
+    Given Log in as a user with read‑only role
+    When Attempt to access "Schedule Test" button for a patient
+    And Observe UI controls
+    Then Schedule Test button is disabled or hidden, and access is denied with appropriate authorization message.
+
+  @Non-Functional
+  Scenario: TC-010 - Validate audit log entry creation for insurance verification and pre‑authorization
+    Given Log in as billing coordinator
+    When Schedule a covered MRI that requires pre‑authorization
+    And Complete the process
+    And Query audit log for the patient record
+    Then Audit log contains entries for eligibility check, pre‑authorization request, and storage of Authorization ID with timestamps.
